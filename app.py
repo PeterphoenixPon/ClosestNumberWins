@@ -37,6 +37,9 @@ def handle_join(data):
 
     players[name] = {'points': 10, 'ready': False}
     emit('joined', {'name': name, 'players': list(players.keys())}, broadcast=True)
+        # Emit updated player list
+    socketio.emit("updatePlayerList", {"players": list(players.keys())})
+
 
 @socketio.on('ready')
 def handle_ready(data):
@@ -61,10 +64,42 @@ def resume_game():
         is_paused = False
         socketio.emit('game_resumed')
         start_round()
+        
+@socketio.on('restart_game')
+def handle_restart():
+    global players, submissions, round_active, game_started, round_number
+
+    # Reset all game state
+    players = {}
+    ready_players.clear()
+    submissions = {}
+    round_active = False
+    game_started = False
+    round_number = 0
+    
+    socketio.emit('ready_update', {'ready_players': []})
+    socketio.emit('updatePlayerList', {'players': []})
+    # Notify all clients that the game has reset
+    socketio.emit('game_reset', {
+        'message': 'Game has been reset. Please re-join.'
+    })
+    
+@socketio.on("remove_player")
+def handle_remove_player(data):
+    name = data.get("name")
+    if name in players:
+        del players[name]
+        # Broadcast updated player list
+        socketio.emit("updatePlayerList", {"players": list(players.keys())})
+
 
 def start_game():
     global game_started
     game_started = True
+    socketio.emit('game_start')
+    for p in players:
+        players[p]['ready'] = False
+
     socketio.emit('game_start')
     start_round()
 
@@ -108,27 +143,39 @@ def process_round():
         return  # Timer or submit race — ignore
 
     round_active = False  # Lock the round
+    
+    win_reason = None  # Optional explanation
 
     if not submissions:
         socketio.emit('round_result', {'message': 'No submissions this round.'})
         return
-
-    # Check for tie & 100 rule
-    from collections import Counter
-    value_counts = Counter(submissions.values())
-    has_duplicates = any(count > 1 for count in value_counts.values())
-    has_100 = 100 in submissions.values()
-
-    if has_duplicates and has_100:
-        # 100 wins if any duplicate values exist
-        winners = [p for p, v in submissions.items() if v == 100]
+    # Special case: 2 players, one submits 0 and one submits 100
+    if len(submissions) == 2:
+        values = list(submissions.values())
+        if sorted(values) == [0, 100]:
+            winners = [p for p, v in submissions.items() if v == 100]
+            win_reason = "Special Rule: 100 beats 0 in 1v1"
+        else:
+            winners = None
     else:
-        # Normal rule
-        avg = sum(submissions.values()) / len(submissions)
-        target = avg * 0.8
-        closest_diff = min(abs(v - target) for v in submissions.values())
-        winners = [p for p, v in submissions.items() if abs(v - target) == closest_diff]
+        winners = None
 
+    # If not already assigned by special rule, use other rule sets
+    if winners is None:
+        from collections import Counter
+        value_counts = Counter(submissions.values())
+        has_duplicates = any(count > 1 for count in value_counts.values())
+        has_100 = 100 in submissions.values()
+
+        if has_duplicates and has_100:
+            winners = [p for p, v in submissions.items() if v == 100]
+            win_reason = "Special Rule: 100 wins when duplicates exist"
+        else:
+            avg = sum(submissions.values()) / len(submissions)
+            target = avg * 0.8
+            closest_diff = min(abs(v - target) for v in submissions.values())
+            winners = [p for p, v in submissions.items() if abs(v - target) == closest_diff]
+            
     # Deduct points from non-winners
     for name in list(players.keys()):
         if name not in winners:
@@ -147,7 +194,8 @@ def process_round():
         'winners': winners,
         'players': {p: players[p]['points'] for p in players},
         'submissions': submissions,
-        'eliminated': eliminated
+        'eliminated': eliminated,
+        'win_reason': win_reason
     })
 
     submissions = {}
@@ -155,6 +203,12 @@ def process_round():
     if len(players) == 1:
         winner = list(players.keys())[0]
         socketio.emit('game_over', {'winner': winner})
+        
+        players.clear()
+        ready_players.clear()
+        handle_restart()
+        # Optionally notify clients that the game has fully reset
+        socketio.emit('updatePlayerList', {"players": []})
     else:
         start_round()
 

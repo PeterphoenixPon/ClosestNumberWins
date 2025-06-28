@@ -10,7 +10,7 @@
             font-family: sans-serif;
             margin: 0;
             padding: 1em;
-            max-width: 1200px;
+            max-width: 600px;
             margin-left: auto;
             margin-right: auto;
             background-color: #f9f9f9;
@@ -49,7 +49,7 @@
                 <li>After all players entered a number, an average is calculated and then multiplied by <strong>0.8</strong></li>
                 <li>The player(s) whose number is closest to the result <strong>win the round</strong></li>
                 <li>All others lose 1 point</li>
-                <li>Special case: tbd</li>
+                <li>Special case: If two or more players submitted the same number, and someone submitted 100, then the player(s) who submitted 100 automatically win the round — regardless of the average.</li>
                 <li>Players are eliminated at 0 points</li>
                 <li>The game continues until <strong>1 player remains</strong></li>
             </ul>
@@ -61,7 +61,7 @@
 
     <div id="lobby" style="display:none;">
         <h2>Lobby</h2>
-        <ul id="playerList"></ul>
+        <div id="playersList" style="margin-top: 1em;"></div>
         <button onclick="sendReady()">I'm Ready</button>
     </div>
 
@@ -87,5 +87,10 @@
         <div id="roundCounter" style="margin-top: 1em; font-weight: bold;"></div>
         <div id="playerScores" style="margin-top: 1em;"></div>
     </div>
+    <div id="gameOverArea" style="display:none; margin-top: 1em;">
+        <strong id="gameOverMessage"></strong><br>
+        <button onclick="restartGame()">Restart Game</button>
+    </div>
+    <div id="errorMessage" style="display:none; color: red;"></div>
 </body>
 </html>

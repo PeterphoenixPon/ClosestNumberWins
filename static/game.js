@@ -40,13 +40,14 @@ function submitGuess() {
 
 
 socket.on('joined', data => {
+    localStorage.setItem('myName', myName);
     document.getElementById("rules").style.display = "none";  // 
     document.getElementById("lobby").style.display = "block";
-    updatePlayerList(data.players);
+    renderPlayersList(data.players);
 });
 
 socket.on('ready_update', data => {
-    updatePlayerList(data.ready_players);
+    renderPlayersList(data.ready_players);
 });
 
 socket.on('game_start', () => {
@@ -72,7 +73,9 @@ socket.on('round_result', data => {
         const winnerText = data.winners.length === 1 ? "Winner" : "Winners";
         html += `<br><strong> ${winnerText}:</strong> ${data.winners.join(', ')}`;
     }
-
+    if (data.win_reason) {
+        html += `<br><em>(${data.win_reason})</em>`;
+    }
     resultsDiv.innerHTML = html;
     // Build score table
     let scoreHTML = `<strong>Current Scores & Last Input:</strong><ul>`;
@@ -93,7 +96,7 @@ socket.on('round_result', data => {
 
 socket.on('new_round', data => {
     document.getElementById("roundCounter").innerText =
-        `Now we are in round ${data.round_number}`;
+        `Now you are in round ${data.round_number}`;
 
     // Reset input and submit button
     const input = document.getElementById("guessInput");
@@ -125,16 +128,79 @@ socket.on('game_resumed', () => {
 
 
 socket.on('game_over', data => {
-    alert(`Game Over! Winner is ${data.winner}`);
+    document.getElementById("gameOverMessage").innerText = `Game Over! Winner is ${data.winner}`;
+    document.getElementById("gameOverArea").style.display = "block";
+    document.getElementById("gameArea").style.display = "none";
 });
 
-function updatePlayerList(players) {
-    let list = document.getElementById("playerList");
-    list.innerHTML = "";
-    players.forEach(p => {
-        let li = document.createElement("li");
-        li.innerText = p;
-        list.appendChild(li);
+//function updatePlayerList(players) {
+//    let list = document.getElementById("playerList");
+//    list.innerHTML = "";
+//    players.forEach(p => {
+//        let li = document.createElement("li");
+//        li.innerText = p;
+//        list.appendChild(li);
+//    });
+//}
+socket.on("updatePlayerList", data => {
+    renderPlayersList(data.players);
+});
+
+function restartGame() {
+    socket.emit('restart_game'); // Ask server to reset
+    socket.emit('join', { name: localStorage.getItem('myName') });
+    document.getElementById("lobby").style.display = "block";
+    location.reload(); // Refresh page to reset client state
+}
+
+function renderPlayersList(players) {
+    const playersListDiv = document.getElementById("playersList");
+    if (!playersListDiv) return; // Exit if div isn't found
+
+    playersListDiv.innerHTML = "";  // Clear existing
+
+    players.forEach(player => {
+        const playerDiv = document.createElement("div");
+        playerDiv.style.marginBottom = "5px";
+        playerDiv.style.display = "inline-flex";   // inline-flex so it hugs content
+        playerDiv.style.alignItems = "right";     // Vertically center text & button
+        playerDiv.style.justifyContent = "space-between"; // keeps space balanced
+
+        const nameSpan = document.createElement("span");
+        nameSpan.innerText = player;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.innerText = "x";                   // Use a small '¡Á' instead of "Remove"
+        removeBtn.title = "Remove player";           // Tooltip on hover
+        removeBtn.style.marginLeft = "5px";       // small space from name
+        removeBtn.style.marginRight = "20px";       // small space from name
+        removeBtn.style.padding = "0";         // Smaller padding
+        removeBtn.style.fontSize = "0.5em";          // Smaller font
+        removeBtn.style.cursor = "pointer";
+        removeBtn.style.border = "1px solid #ccc";
+        removeBtn.style.borderRadius = "50%";  // makes button round
+        removeBtn.style.width = "20px";
+        removeBtn.style.height = "20px";
+        removeBtn.style.background = "#f8f8f8";
+        removeBtn.style.lineHeight = "10px";
+        removeBtn.style.textAlign = "top";
+
+        // Attach event to emit remove request
+        removeBtn.onclick = () => {
+            if (confirm(`Remove player "${player}"?`)) {
+                socket.emit("remove_player", { name: player });
+            }
+        };
+
+        playerDiv.appendChild(nameSpan);
+        playerDiv.appendChild(removeBtn);
+
+        playersListDiv.appendChild(playerDiv);
     });
 }
 
+socket.on('error', data => {
+    const errDiv = document.getElementById("errorMessage");
+    errDiv.innerText = data.message;
+    errDiv.style.display = "block";  // make sure the div is visible
+});
